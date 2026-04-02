@@ -1,0 +1,29 @@
+# Phoenix EA — Autonomous MQL5 Trading System
+# Compiled MQL5 files
+*.ex5
+*.ex4
+
+# MT5 logs
+*.log
+/Files/Phoenix/logs/
+/Files/Phoenix/state/
+/Files/Phoenix/journal/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Backtest results
+*.htm
+*.html
+/Tester/
+
+# Temporary
+*.tmp
+*.bak
+~$*
