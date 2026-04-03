@@ -153,15 +153,13 @@ int OnInit()
          g_WalkForward.Init(InpWFWindows, InpWFOOSRatio);
    }
 
-   //--- Initialize bar time tracking
-   ArrayResize(g_LastBarTime, g_SymbolCount);
-   ArrayInitialize(g_LastBarTime, 0);
+   //--- Initialize bar time tracking (now handled by DataEngine internally)
 
    //--- Start timer
    EventSetTimer(TIMER_INTERVAL_SEC);
 
-   //--- Dashboard comment
-   UpdateDashboard();
+   //--- Dashboard comment (skip during backtesting)
+   if(!g_IsTesting) UpdateDashboard();
 
    g_Logger.Info("Phoenix EA initialized successfully ✓");
    if(g_Telegram.IsEnabled())
@@ -232,22 +230,10 @@ void OnTick()
    if(calendar != NULL && calendar.IsTradingBlocked()) return;
 
    //--- Only process signals on new bars (primary TF) to avoid overtrading
-   bool hasNewBar = false;
-   for(int i = 0; i < g_SymbolCount; i++)
-   {
-      datetime barTime[];
-      ArraySetAsSeries(barTime, true);
-      if(CopyTime(g_Symbols[i].name, InpPrimaryTF, 0, 1, barTime) > 0)
-      {
-         if(barTime[0] != g_LastBarTime[i])
-         {
-            g_LastBarTime[i] = barTime[0];
-            hasNewBar = true;
-         }
-      }
-   }
+   //--- In backtesting, DataEngine already tracks new bars internally
+   bool hasNewBar = g_DataEngine.HasAnyNewBar();
 
-   if(!hasNewBar && !g_IsTesting) return;
+   if(!hasNewBar) return;
 
    //--- Generate signals
    int signalCount = g_SignalAggregator.GenerateSignals(GetPointer(g_DataEngine));
@@ -289,8 +275,8 @@ void OnTick()
       }
    }
 
-   //--- Update dashboard every 10 ticks
-   if(g_TickCount % 10 == 0) UpdateDashboard();
+   //--- Update dashboard (skip during backtesting for performance)
+   if(!g_IsTesting && g_TickCount % 10 == 0) UpdateDashboard();
 }
 
 //+------------------------------------------------------------------+
@@ -298,18 +284,21 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-   //--- State persistence
-   g_StateManager.OnTimer();
+   //--- State persistence (skip during backtesting — no crash recovery needed)
+   if(!g_IsTesting)
+      g_StateManager.OnTimer();
 
    //--- Update correlation matrix periodically
+   //--- In backtesting, reduce frequency (every 24h instead of every hour)
    static datetime lastCorrelationUpdate = 0;
-   if(TimeCurrent() - lastCorrelationUpdate >= CORRELATION_UPDATE_SEC)
+   int corrInterval = g_IsTesting ? 86400 : CORRELATION_UPDATE_SEC;
+   if(TimeCurrent() - lastCorrelationUpdate >= corrInterval)
    {
       g_Correlation.Update();
       lastCorrelationUpdate = TimeCurrent();
    }
 
-   //--- Auto-optimization (genetic allocator)
+   //--- Auto-optimization (genetic allocator) — skip during backtesting
    if(InpAutoOptimize && !g_IsTesting)
    {
       static datetime lastOptimize = 0;
@@ -320,17 +309,17 @@ void OnTimer()
       }
    }
 
-   //--- Daily report
+   //--- Daily report (skip during backtesting)
    static datetime lastReport = 0;
-   if(TimeCurrent() - lastReport >= REPORT_INTERVAL_SEC)
+   if(!g_IsTesting && TimeCurrent() - lastReport >= REPORT_INTERVAL_SEC)
    {
       SendDailyReport();
       lastReport = TimeCurrent();
    }
 
-   //--- Update account mode
+   //--- Update account mode (skip during backtesting)
    static datetime lastModeCheck = 0;
-   if(TimeCurrent() - lastModeCheck >= 3600)
+   if(!g_IsTesting && TimeCurrent() - lastModeCheck >= 3600)
    {
       g_RiskManager.UpdateAccountMode();
       lastModeCheck = TimeCurrent();

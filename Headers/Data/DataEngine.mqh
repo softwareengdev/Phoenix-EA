@@ -22,6 +22,17 @@ private:
    ENUM_TIMEFRAMES   m_filterTF;
    bool              m_initialized;
    
+   // New-bar tracking per symbol (performance: skip CopyBuffer when no new bar)
+   datetime m_lastBarTime[];
+   bool     m_hasNewBar[];
+   bool     m_anyNewBar;
+   
+   // Donchian/Volume cache (avoid per-tick CopyHigh/CopyLow/CopyTickVolume)
+   double   m_cachedDonchianHigh[];
+   double   m_cachedDonchianLow[];
+   double   m_cachedVolumeSMA[];
+   double   m_cachedCurrentVol[];
+   
    // Indicator buffers (cached per-symbol)
    double m_maFast[][2];
    double m_maSlow[][2];
@@ -46,7 +57,7 @@ private:
 
 public:
    CDataEngine() : m_symbolCount(0), m_primaryTF(PERIOD_H1), m_entryTF(PERIOD_M15),
-                    m_filterTF(PERIOD_H4), m_initialized(false) {}
+                    m_filterTF(PERIOD_H4), m_initialized(false), m_anyNewBar(false) {}
    
    ~CDataEngine() { Shutdown(); }
    
@@ -64,6 +75,22 @@ public:
       // Initialize symbol data objects
       ArrayResize(m_symbolData, m_symbolCount);
       ArrayResize(m_regimes, m_symbolCount);
+      
+      // Initialize new-bar tracking
+      ArrayResize(m_lastBarTime, m_symbolCount);
+      ArrayResize(m_hasNewBar, m_symbolCount);
+      ArrayInitialize(m_lastBarTime, 0);
+      ArrayInitialize(m_hasNewBar, false);
+      
+      // Initialize Donchian/Volume cache
+      ArrayResize(m_cachedDonchianHigh, m_symbolCount);
+      ArrayResize(m_cachedDonchianLow, m_symbolCount);
+      ArrayResize(m_cachedVolumeSMA, m_symbolCount);
+      ArrayResize(m_cachedCurrentVol, m_symbolCount);
+      ArrayInitialize(m_cachedDonchianHigh, 0);
+      ArrayInitialize(m_cachedDonchianLow, 0);
+      ArrayInitialize(m_cachedVolumeSMA, 0);
+      ArrayInitialize(m_cachedCurrentVol, 0);
       
       // Initialize indicator buffer arrays
       ArrayResize(m_maFast, m_symbolCount);
@@ -146,20 +173,45 @@ public:
       m_initialized = false;
    }
    
-   // Update all data for all symbols
+   // Update all data for all symbols (new-bar optimized for backtest speed)
    bool Update() {
       if(!m_initialized) return false;
       
+      m_anyNewBar = false;
+      
       for(int i = 0; i < m_symbolCount; i++) {
          if(!g_Symbols[i].enabled) continue;
-         m_symbolData[i].Refresh();
-         UpdateIndicators(i);
-         UpdateRegime(i);
+         
+         // Detect new bar on primary timeframe
+         datetime barTime[];
+         ArraySetAsSeries(barTime, true);
+         m_hasNewBar[i] = false;
+         if(CopyTime(g_Symbols[i].name, m_primaryTF, 0, 1, barTime) > 0) {
+            if(barTime[0] != m_lastBarTime[i]) {
+               m_lastBarTime[i] = barTime[0];
+               m_hasNewBar[i] = true;
+               m_anyNewBar = true;
+            }
+         }
+         
+         // Only update indicators on new bar (saves ~90% of CopyBuffer calls)
+         if(m_hasNewBar[i]) {
+            m_symbolData[i].Refresh();
+            UpdateIndicators(i);
+            UpdateDonchianCache(i);
+            UpdateRegime(i);
+         }
       }
       
-      m_calendarFilter.Update();
+      // Calendar: skip entirely in backtesting (unreliable and extremely slow)
+      if(!g_IsTesting)
+         m_calendarFilter.Update();
+      
       return true;
    }
+   
+   bool HasAnyNewBar()        { return m_anyNewBar; }
+   bool HasNewBar(int symIdx) { return (symIdx < m_symbolCount) ? m_hasNewBar[symIdx] : false; }
    
    // Getters for indicator values (index 0 = current bar, 1 = previous bar)
    double GetMAFast(int symIdx, int shift = 0)     { return (symIdx < m_symbolCount) ? m_maFast[symIdx][shift] : 0; }
@@ -181,38 +233,22 @@ public:
    
    double GetDonchianHigh(int symIdx, int period) {
       if(symIdx >= m_symbolCount) return 0;
-      double high[];
-      ArraySetAsSeries(high, true);
-      if(CopyHigh(g_Symbols[symIdx].name, m_primaryTF, 1, period, high) < period) return 0;
-      int maxIdx = ArrayMaximum(high);
-      return (maxIdx >= 0) ? high[maxIdx] : 0;
+      return m_cachedDonchianHigh[symIdx];
    }
    
    double GetDonchianLow(int symIdx, int period) {
       if(symIdx >= m_symbolCount) return 0;
-      double low[];
-      ArraySetAsSeries(low, true);
-      if(CopyLow(g_Symbols[symIdx].name, m_primaryTF, 1, period, low) < period) return 0;
-      int minIdx = ArrayMinimum(low);
-      return (minIdx >= 0) ? low[minIdx] : 0;
+      return m_cachedDonchianLow[symIdx];
    }
    
    double GetVolumeSMA(int symIdx, int period) {
       if(symIdx >= m_symbolCount) return 0;
-      long vol[];
-      ArraySetAsSeries(vol, true);
-      if(CopyTickVolume(g_Symbols[symIdx].name, m_primaryTF, 0, period, vol) < period) return 0;
-      double sum = 0;
-      for(int i = 0; i < period; i++) sum += (double)vol[i];
-      return sum / period;
+      return m_cachedVolumeSMA[symIdx];
    }
    
    double GetCurrentVolume(int symIdx) {
       if(symIdx >= m_symbolCount) return 0;
-      long vol[];
-      ArraySetAsSeries(vol, true);
-      if(CopyTickVolume(g_Symbols[symIdx].name, m_primaryTF, 0, 1, vol) < 1) return 0;
-      return (double)vol[0];
+      return m_cachedCurrentVol[symIdx];
    }
    
    // Get current close price
@@ -301,6 +337,39 @@ private:
       // CCI
       if(CopyBuffer(g_Symbols[idx].handleCCI, 0, 0, 3, buf) >= 3)
          { m_cci[idx][0] = buf[0]; m_cci[idx][1] = buf[1]; m_cci[idx][2] = buf[2]; }
+   }
+   
+   // Cache Donchian High/Low and Volume (called once per new bar, not per tick)
+   void UpdateDonchianCache(int idx) {
+      string sym = g_Symbols[idx].name;
+      int period = InpBO_DonchianPeriod;
+      
+      // Donchian High
+      double high[];
+      ArraySetAsSeries(high, true);
+      if(CopyHigh(sym, m_primaryTF, 1, period, high) >= period) {
+         int maxIdx = ArrayMaximum(high);
+         m_cachedDonchianHigh[idx] = (maxIdx >= 0) ? high[maxIdx] : 0;
+      }
+      
+      // Donchian Low
+      double low[];
+      ArraySetAsSeries(low, true);
+      if(CopyLow(sym, m_primaryTF, 1, period, low) >= period) {
+         int minIdx = ArrayMinimum(low);
+         m_cachedDonchianLow[idx] = (minIdx >= 0) ? low[minIdx] : 0;
+      }
+      
+      // Volume SMA + Current Volume
+      int volPeriod = InpBO_VolumePeriod;
+      long vol[];
+      ArraySetAsSeries(vol, true);
+      if(CopyTickVolume(sym, m_primaryTF, 0, volPeriod, vol) >= volPeriod) {
+         double sum = 0;
+         for(int i = 0; i < volPeriod; i++) sum += (double)vol[i];
+         m_cachedVolumeSMA[idx] = sum / volPeriod;
+         m_cachedCurrentVol[idx] = (double)vol[0];
+      }
    }
    
    void UpdateRegime(int idx) {

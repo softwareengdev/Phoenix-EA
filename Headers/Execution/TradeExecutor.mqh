@@ -23,10 +23,20 @@ private:
    double         m_partialPct;
    double         m_partialTrigger;
    
+   // Cached ATR handles per symbol (avoid iATR/IndicatorRelease per tick per position)
+   int            m_atrHandles[];
+   int            m_atrHandleCount;
+   
 public:
    CTradeExecutor() : m_maxRetries(3), m_slippage(10), m_trailMode(TRAIL_ATR),
                        m_trailATRMulti(2.0), m_breakevenPips(15), m_breakevenOffset(2),
-                       m_partialCloseEnabled(true), m_partialPct(50), m_partialTrigger(1.0) {}
+                       m_partialCloseEnabled(true), m_partialPct(50), m_partialTrigger(1.0),
+                       m_atrHandleCount(0) {}
+   
+   ~CTradeExecutor() {
+      for(int i = 0; i < m_atrHandleCount; i++)
+         if(m_atrHandles[i] != INVALID_HANDLE) IndicatorRelease(m_atrHandles[i]);
+   }
    
    bool Init() {
       m_maxRetries = InpMaxRetries;
@@ -43,6 +53,12 @@ public:
       m_trade.SetDeviationInPoints(m_slippage);
       m_trade.SetTypeFilling(ORDER_FILLING_FOK);
       m_trade.SetTypeFillingBySymbol(Symbol());
+      
+      // Pre-create ATR handles for all symbols (avoid per-tick creation)
+      m_atrHandleCount = g_SymbolCount;
+      ArrayResize(m_atrHandles, m_atrHandleCount);
+      for(int i = 0; i < m_atrHandleCount; i++)
+         m_atrHandles[i] = iATR(g_Symbols[i].name, InpPrimaryTF, 14);
       
       if(g_Logger != NULL)
          g_Logger.Info(StringFormat("TradeExecutor: Slippage=%d Retries=%d Trail=%s",
@@ -87,7 +103,7 @@ public:
                g_Logger.Warning(StringFormat("TradeExecutor: Retcode %d on attempt %d: %s",
                   retcode, attempt + 1, m_trade.ResultRetcodeDescription()));
          }
-         Sleep(500 * (attempt + 1)); // Exponential backoff
+         if(!g_IsTesting) Sleep(500 * (attempt + 1)); // Exponential backoff (skip in tester)
       }
       
       if(g_Logger != NULL)
@@ -112,7 +128,7 @@ public:
                g_Logger.LogTrade(sym, "CLOSE", m_trade.ResultPrice(), vol, 0, 0, reason);
             return true;
          }
-         Sleep(300 * (attempt + 1));
+         if(!g_IsTesting) Sleep(300 * (attempt + 1));
       }
       return false;
    }
@@ -152,16 +168,17 @@ public:
          double point = SymbolInfoDouble(sym, SYMBOL_POINT);
          int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
          
-         // Get ATR for trailing
-         int atrHandle = iATR(sym, InpPrimaryTF, 14);
+         // Get ATR for trailing (use cached handle)
+         int atrHandle = INVALID_HANDLE;
+         for(int si = 0; si < m_atrHandleCount; si++) {
+            if(g_Symbols[si].name == sym) { atrHandle = m_atrHandles[si]; break; }
+         }
+         if(atrHandle == INVALID_HANDLE) continue;
+         
          double atrBuf[];
          ArraySetAsSeries(atrBuf, true);
-         if(CopyBuffer(atrHandle, 0, 0, 1, atrBuf) < 1) {
-            IndicatorRelease(atrHandle);
-            continue;
-         }
+         if(CopyBuffer(atrHandle, 0, 0, 1, atrBuf) < 1) continue;
          double atr = atrBuf[0];
-         IndicatorRelease(atrHandle);
          
          if(atr <= 0) continue;
          

@@ -25,7 +25,8 @@ public:
    
    void Init(int symbolCount, int lookbackBars = 100, double maxCorrelation = 0.7) {
       m_size = symbolCount;
-      m_lookbackBars = lookbackBars;
+      // In backtesting, use shorter lookback (50 vs 100 bars) for speed
+      m_lookbackBars = g_IsTesting ? MathMin(lookbackBars, 50) : lookbackBars;
       m_maxCorrelation = maxCorrelation;
       ArrayResize(m_matrix, m_size * m_size);
       ArrayInitialize(m_matrix, 0);

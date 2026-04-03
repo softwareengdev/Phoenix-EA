@@ -50,8 +50,9 @@ private:
    void WriteToFile(string msg) {
       if(!m_fileEnabled || m_fileHandle == INVALID_HANDLE) return;
       FileWriteString(m_fileHandle, msg + "\n");
-      FileFlush(m_fileHandle);
+      // Flush every 100 lines instead of every write (10x less I/O syscalls)
       m_linesWritten++;
+      if(m_linesWritten % 100 == 0) FileFlush(m_fileHandle);
       if(m_linesWritten > 50000) RotateFile();
    }
 
@@ -73,6 +74,16 @@ public:
       m_minLevel = level;
       m_printEnabled = true;
       m_fileEnabled = enableFile;
+      
+      // In backtesting: disable file logging entirely (massive I/O savings)
+      // In optimization: also disable Print (thousands of passes)
+      if(MQLInfoInteger(MQL_TESTER)) {
+         m_fileEnabled = false;
+         if(MQLInfoInteger(MQL_OPTIMIZATION))
+            m_printEnabled = false;
+         else
+            m_minLevel = (ENUM_LOG_LEVEL)MathMax(m_minLevel, LOG_WARNING); // Only warnings+ in tester
+      }
       
       if(m_fileEnabled) {
          string dir = "Phoenix\\logs";
