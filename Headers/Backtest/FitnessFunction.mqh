@@ -26,8 +26,7 @@ public:
       double maxDD = TesterStatistics(STAT_EQUITY_DD_RELATIVE);
       double trades = TesterStatistics(STAT_TRADES);
       double winRate = 0;
-      double totalWins = TesterStatistics(STAT_SHORT_TRADES) > 0 ? 
-                         TesterStatistics(STAT_PROFIT_SHORT_TRADES) : 0;
+      double totalWins = TesterStatistics(STAT_PROFIT_TRADES);
       
       // Minimum trade filter - penalize low trade count
       if(trades < 20) return -999.0;

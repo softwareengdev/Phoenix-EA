@@ -56,7 +56,7 @@ public:
       FileWriteString(handle, "</style></head><body>\n");
       
       // Title
-      FileWriteString(handle, StringFormat("<h1>🔥 Phoenix EA — Backtest Report</h1>\n"));
+      FileWriteString(handle, "<h1>Phoenix EA - Backtest Report</h1>\n");
       FileWriteString(handle, StringFormat("<p>Generated: %s | Period: %s to %s</p>\n",
          TimeToString(TimeCurrent()), 
          tradeCount > 0 ? TimeToString(trades[0].closeTime, TIME_DATE) : "N/A",
@@ -175,10 +175,10 @@ private:
       
       for(int i = 0; i < points; i += step) {
          double pct = (curve[i].equity - minEq) / range * 100.0;
-         string color = (curve[i].drawdownPct > 0.05) ? "#ff4444" : "#00ff88";
+         string barColor = (curve[i].drawdownPct > 0.05) ? "#ff4444" : "#00ff88";
          FileWriteString(handle, StringFormat(
             "<div class='bar'><div class='bar-fill' style='width:%.0f%%;background:%s;'></div></div>\n",
-            MathMax(1, pct), color));
+            MathMax(1, pct), barColor));
       }
       FileWriteString(handle, StringFormat("<p>Min: %.2f | Max: %.2f | Final: %.2f</p>\n",
          minEq, maxEq, curve[points-1].equity));

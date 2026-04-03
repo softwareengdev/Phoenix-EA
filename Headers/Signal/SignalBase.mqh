@@ -64,7 +64,8 @@ public:
    void               SetEnabled(bool v)     { m_enabled = v; m_metrics.enabled = v; }
    double             GetWeight()            { return m_allocationWeight; }
    void               SetWeight(double w)    { m_allocationWeight = w; m_metrics.allocationWeight = w; }
-   SStrategyMetrics*  GetMetrics()           { return GetPointer(m_metrics); }
+   void               GetMetrics(SStrategyMetrics &out) { out = m_metrics; }
+   SStrategyMetrics   GetMetricsCopy()       { return m_metrics; }
    
    void UpdateMetrics(double profit, double profitPct) {
       m_metrics.totalTrades++;

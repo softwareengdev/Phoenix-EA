@@ -182,9 +182,9 @@ public:
    int GetTradeCount()       { return m_historyCount; }
    int GetDailyReturnCount() { return m_dailyReturnCount; }
    
-   SBacktestTrade* GetTrade(int idx) {
-      if(idx >= 0 && idx < m_historyCount) return GetPointer(m_tradeHistory[idx]);
-      return NULL;
+   bool GetTrade(int idx, SBacktestTrade &out) {
+      if(idx >= 0 && idx < m_historyCount) { out = m_tradeHistory[idx]; return true; }
+      return false;
    }
    
    void GetAllTrades(SBacktestTrade &trades[]) {

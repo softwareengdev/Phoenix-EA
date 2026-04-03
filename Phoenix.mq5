@@ -6,9 +6,7 @@
 #property copyright   "Copyright 2025, Phoenix Trading Systems"
 #property link        "https://github.com/softwareengdev/Phoenix-EA"
 #property version     "3.00"
-#property description "Phoenix EA — Autonomous Multi-Strategy Trading System"
-#property description "Multi-strategy | Self-optimizing | Institutional-grade risk"
-#property description "Strategies: Trend, MeanReversion, Breakout, Scalper"
+#property description "Phoenix EA v3.0 — Multi-strategy, Self-optimizing, Institutional-grade risk"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -547,7 +545,7 @@ void CheckExitSignals()
       if(!IS_PHOENIX_MAGIC(magic)) continue;
 
       ENUM_STRATEGY_TYPE strategy = DECODE_STRATEGY(magic);
-      int symIdx = DECODE_SYMBOL(magic);
+      int symIdx = (int)DECODE_SYMBOL(magic);
       ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
       ENUM_SIGNAL_TYPE posDir = (posType == POSITION_TYPE_BUY) ? SIGNAL_BUY : SIGNAL_SELL;
 
@@ -645,7 +643,7 @@ void SendDailyReport()
    for(int i = 0; i < g_SignalAggregator.GetStrategyCount(); i++)
    {
       CSignalBase *s = g_SignalAggregator.GetStrategy(i);
-      if(s != NULL) wins += s.GetMetrics().winTrades;
+      if(s != NULL) wins += s.GetMetricsCopy().winTrades;
    }
 
    g_Telegram.NotifyDailyReport(equity, dailyPnL, dailyPct,
