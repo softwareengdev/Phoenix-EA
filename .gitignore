@@ -1,13 +1,18 @@
-# Phoenix EA — Autonomous MQL5 Trading System
+# Phoenix EA v3.0 — .gitignore
+
 # Compiled MQL5 files
 *.ex5
 *.ex4
 
-# MT5 logs
+# MT5 logs and runtime data
 *.log
-/Files/Phoenix/logs/
-/Files/Phoenix/state/
-/Files/Phoenix/journal/
+Files/logs/
+Files/state/
+Files/journal/
+
+# Backtest HTML reports (regenerated)
+Files/*.html
+Files/*.htm
 
 # IDE
 .vscode/
@@ -18,12 +23,13 @@ Thumbs.db
 desktop.ini
 .DS_Store
 
-# Backtest results
-*.htm
-*.html
+# MetaTrader tester cache
 /Tester/
 
-# Temporary
+# Temporary files
 *.tmp
 *.bak
 ~$*
+
+# Backup files
+*.orig
