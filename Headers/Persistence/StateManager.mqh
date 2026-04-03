@@ -19,6 +19,12 @@ public:
    CStateManager() : m_saveInterval(60), m_lastSave(0), m_initialized(false) {}
    
    bool Init() {
+      // In backtesting: skip all file I/O — no state persistence needed
+      if(MQLInfoInteger(MQL_TESTER)) {
+         m_initialized = false;
+         return true;
+      }
+      
       string dir = "Phoenix\\state";
       FolderCreate(dir);
       m_stateFile = dir + "\\phoenix_state.bin";
@@ -46,6 +52,9 @@ public:
    }
    
    bool SaveState() {
+      // Never write files during backtesting
+      if(!m_initialized) return true;
+      
       // Backup current file first
       if(FileIsExist(m_stateFile)) {
          if(FileIsExist(m_backupFile)) FileDelete(m_backupFile);

@@ -34,6 +34,9 @@ public:
    bool SendMessage(string text, bool silent = false) {
       if(!m_enabled) return false;
       
+      // No network I/O during backtesting (WebRequest fails in tester anyway)
+      if(MQLInfoInteger(MQL_TESTER)) return false;
+      
       // Rate limiting
       if(TimeCurrent() - m_lastSend < m_minInterval) return false;
       

@@ -71,7 +71,7 @@ int OnInit()
 {
    //--- Initialize logger first
    g_Logger = new CLogger();
-   if(!g_Logger.Init("PHX", InpLogLevel, !MQLInfoInteger(MQL_OPTIMIZATION)))
+   if(!g_Logger.Init("PHX", InpLogLevel, !MQLInfoInteger(MQL_TESTER)))
    {
       Print("FATAL: Logger initialization failed");
       return INIT_FAILED;
